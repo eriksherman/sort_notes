@@ -1,6 +1,7 @@
 /* Erik Sherman */
 
 #include <dirent.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,104 @@
 int string_in_array(const char* string, const char *array[], int length);
 void moveFiles(char* curpath);
 char *concat_string(const char *str1, const char* str2);
+int remove_files_in_dir(char* curpath);
+void remove_all_files_in_dir(char* curpath);
+
+
+void remove_all_files_in_dir(char* curpath) {
+    struct dirent *cure;
+    DIR *cur = opendir(curpath);
+    if (cur == NULL) {
+        printf("remove_files_in_dir called with a nonvalid directory");
+        return;
+    }
+    while ((cure = readdir(cur)) != NULL) {
+        char *fname = cure -> d_name;
+        struct dirent *neste;
+        char *nested_path = concat_string(curpath, fname);
+        DIR *nest = opendir(nested_path);
+
+        /* if fname is a file */
+        if (nest == NULL) {
+    
+            printf("removing %s\n", fname);
+            int removed = remove(nested_path)
+                == 0;
+            if (removed)
+                printf("%s removed sucessfully\n", fname);
+            else
+                printf("%s could not be removed\n", fname);
+        }
+        else
+            closedir(nest);
+    }
+    closedir(cur);
+}
+
+
+int remove_files_in_dir(char* curpath) {
+    int has_nondropbox_files = 0;
+    char *fnames_dont_open[] = {".","..",".DS_Store","Icon\r",".dropbox",
+        ".dropbox.cache"};  
+    struct dirent *cure;
+    DIR *cur = opendir(curpath);
+
+    if (cur == NULL) {
+        printf("remove_files_in_dir called with a nonvalid directory");
+        return 0;
+    }
+
+    while ((cure = readdir(cur)) != NULL) {
+        char *fname = cure -> d_name;
+        if (!string_in_array(fname, fnames_dont_open,
+                    sizeof(fnames_dont_open)/sizeof(fnames_dont_open[0]))) {
+            struct dirent *neste;
+            char *nested_path = concat_string(curpath, fname);
+            DIR *nest = opendir(nested_path);
+
+            /* if fname is a file */
+            if (nest == NULL) {
+                /* if fname is a dropbox file */
+                if (*fname == '_') {
+                    int removed = remove(concat_string(curpath, fname))
+                        == 0;
+                    if (removed)
+                        printf("%s removed sucessfully\n", fname);
+                    else
+                        printf("%s could not be removed\n", fname);
+                }
+                /* if fname is nondropbox file */
+                else {
+                    printf("%s is a nondropbox file\n", fname);
+                    has_nondropbox_files = 1;
+                }
+            }
+            /* if fname is a dir */
+            else {
+                closedir(nest);
+                char *folder_path = concat_string(curpath, fname);
+                char *new_curstring = concat_string(folder_path, "/");
+                int recursive_call = remove_files_in_dir(new_curstring);
+                if (recursive_call) {
+                    printf("%s is path of directory with a non dropbox file", new_curstring);
+                }
+                else {
+                    printf("removing dir: %s\n", folder_path);
+                    remove_all_files_in_dir(new_curstring);
+                    printf("removed all files in dir: %s\n", folder_path);
+                    if (rmdir(folder_path) == 0)
+                        printf("dir removed");
+                    else {
+                        printf("dir not removed");
+                        perror("");
+                    }
+                }
+            }
+        }
+    }
+    closedir(cur);
+    return has_nondropbox_files;
+}
 
 /* return 1 if string is in array (with length length),
    otherwise return 0 */
@@ -73,7 +172,7 @@ void movefiles(char * curpath) {
                     sizeof(fnames_dont_open)/sizeof(fnames_dont_open[0]))) {
             printf("nested dir name: %s\n", fname);
             struct dirent *neste;
-                char *nested_path = concat_string(path, fname);
+            char *nested_path = concat_string(path, fname);
             DIR *nest = opendir(nested_path);
 
             /* if fname is a file */
@@ -115,8 +214,8 @@ void movefiles(char * curpath) {
 
                 /* move fname to the directory that was just created
                    (DEST_ROOT/curpath/<first word fname>/fname */
-                char *dest_path_file = concat_string(concat_string(
-                            dest_path, "/"), fname);
+                char *dest_path_file = concat_string(concat_string
+                        (concat_string(dest_path, "/"), "_"), fname);
                 int file_copied = copyfile(nested_path, dest_path_file,
                         NULL, COPYFILE_DATA);
                 if (file_copied == 0)
@@ -145,7 +244,8 @@ void movefiles(char * curpath) {
 }
 
 int main(void) {
-    movefiles("");
+    remove_files_in_dir(DEST_ROOT);
+    //movefiles("");
     return 0;
 }
 
